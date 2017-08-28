@@ -1,4 +1,3 @@
 from .connection import set_connection_params
-from .api import getdf, select, query
-
-
+from .query_base import getdf, query, select
+from .queries import *
