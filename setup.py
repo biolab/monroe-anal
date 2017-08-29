@@ -3,17 +3,17 @@
 from setuptools import setup, find_packages
 
 
-VERSION = '1.1.3'
+VERSION = '0.1.0'
 
 
 if __name__ == '__main__':
 
     setup(
-        name="monroe",
-        description="Support utils for querying, manipulating, and visualizing MONROE data",
+        name="monroe-anal",
+        description="Utility library for querying, analyzing, and visualizing MONROE data",
         version=VERSION,
-        author='UL FRI',
-        url='https://github.com/biolab/monroe-something',
+        author='UL FRI, Biolab',
+        url='https://github.com/biolab/monroe-anal',
         keywords=(
         ),
         packages=find_packages(),
@@ -23,14 +23,11 @@ if __name__ == '__main__':
         entry_points={},
         setup_requires=[
             'setuptools_git >= 0.3',
-            'cython',  # Build Cassandra extensions for better performance
         ],
         install_requires=[
             'numpy',
-            'scipy',
             'pandas >= 0.19.0',
-            'cassandra-driver',
-            'lz4',  # Cassandra compression support
+            'influxdb',
         ],
         classifiers=[
             'Framework :: IPython',
