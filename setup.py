@@ -16,6 +16,7 @@ if __name__ == '__main__':
         url='https://github.com/biolab/monroe-anal',
         keywords=(
         ),
+        test_suite='monroe_anal.tests',
         packages=find_packages(),
         package_data={
         },
