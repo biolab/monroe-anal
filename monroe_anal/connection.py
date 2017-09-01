@@ -1,5 +1,4 @@
 from influxdb import InfluxDBClient
-from influxdb.resultset import ResultSet  # pylint: disable=unused-import
 from influxdb.exceptions import InfluxDBClientError, InfluxDBServerError
 
 

@@ -1,5 +1,4 @@
-import sys
-from collections import OrderedDict
+import numpy as np
 
 
 _GROUP_BY = object()
@@ -8,11 +7,6 @@ _GROUP_BY = object()
 class _TableMeta(type):
     def __repr__(cls):
         return cls.__name__
-
-    # Preserve members ordering in Py<3.6
-    if sys.version_info < (3, 6):
-        def __prepare__(*args, **kwargs):
-            return OrderedDict()
 
 
 class _Table(metaclass=_TableMeta):
@@ -33,7 +27,7 @@ class _Table(metaclass=_TableMeta):
                     for attr in dir(self)
                     if not attr.startswith('_'))
 
-    def _select(self):
+    def _select_agg(self):
         return ', '.join('{0}({1}) as {1}'.format(aggfunc, col)
                          for col, aggfunc in self
                          if aggfunc is not _GROUP_BY)
@@ -47,53 +41,38 @@ class _Table(metaclass=_TableMeta):
         return [col for col, _ in self]
 
 
-_CATEGORICAL_COLUMNS = (
-    'NodeId',
-    'Operator',
-    'Iccid',
-    'Host',
-    'EventType',
-    'Message',
-    'CID',
-    'DeviceMode',
-    'DeviceState',
-    'Frequency',
-    'IP_Addr',
-    'MCC_MNC',
-)
-
-
 class ping(_Table):
     NodeId = Iccid = _GROUP_BY
-    RTT = 'MEAN'
-    Error = 'SUM'
-    Operator = Host = 'MODE'
+    RTT = 'mean'
+    Error = 'sum'
+    Operator = Host = 'mode'
     _default_field = 'RTT'
 
 
 class gps(_Table):
     NodeId = _GROUP_BY
-    Latitude = Longitude = Altitude = Speed = SatelliteCount = 'MEAN'
+    Latitude = 'mean'
+    Longitude = Altitude = Speed = SatelliteCount = 'mean'
     _default_field = 'Latitude'
 
 
 class sensor(_Table):
     NodeId = _GROUP_BY
-    Temperature = CPU_User = CPU_Apps = Free = Swap = bat_usb0 = bat_usb1 = bat_usb2 = 'MEAN'
-    BootCounter = Uptime = CumUptime = 'MAX'
-    _default_field = 'Temperature'
+    CPU_User = CPU_Apps = Free = Swap = bat_usb0 = bat_usb1 = bat_usb2 = 'mean'
+    BootCounter = Uptime = CumUptime = 'max'
+    _default_field = 'Uptime'
 
 
 class event(_Table):
     NodeId = _GROUP_BY
-    EventType = Message = 'MODE'
+    EventType = Message = 'mode'
     _default_field = 'EventType'
 
 
 class modem(_Table):
     NodeId = Iccid = _GROUP_BY
-    CID = DeviceMode = DeviceState = Frequency = MCC_MNC = Operator = IP_Addr = 'MODE'
-    ECIO = RSRQ = RSSI = 'MEAN'
+    CID = DeviceMode = DeviceState = Frequency = MCC_MNC = Operator = IP_Address = 'mode'
+    ECIO = RSRQ = RSSI = 'mean'
     _default_field = 'DeviceMode'
 
     def __transform__(self, df):
@@ -136,8 +115,26 @@ def _check_table(table):
     except StopIteration:
         raise ValueError('Unknown MONROE table: {}'.format(table))
 
+class _ModeReducer:
+    def __call__(self, series):
+        if series.empty:
+            return np.nan
+        modes = series.mode().values
+        return modes[0] if modes.size else np.nan
 
+    def __repr__(self):
+        return 'mode'
 
+MODE = _ModeReducer()
+
+# Map columns to their respective sensible aggregation functions
+AGGREGATE = {field: (MODE if func in ('mode', _GROUP_BY) else func)
+             for table in _all_tables()
+             for field, func in table}
+
+_CATEGORICAL_COLUMNS = tuple(field
+                             for field, func in AGGREGATE.items()
+                             if func is MODE)
 
 # Unit tests
 
@@ -145,7 +142,7 @@ assert str(ping) == 'ping'
 assert str(ping.__class__) == 'ping'
 assert len(list(iter(ping))) == 6
 assert len(ping._columns()) == 6
-assert ping._select().count(',') == 3
+assert ping._select_agg().count(',') == 3
 assert ping._groupby() == 'Iccid, NodeId'
 
 assert ping in _all_tables() and gps in _all_tables()

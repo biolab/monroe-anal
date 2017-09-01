@@ -1,13 +1,17 @@
 import re
 import logging
+from functools import reduce, partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import numpy as np
+from pandas.api.types import is_numeric_dtype
 
-from .connection import get_client, InfluxDBException, ResultSet
+from influxdb.resultset import ResultSet
+
+from .connection import get_client, InfluxDBException
 from .util import aslist
-from .db import _check_table, _CATEGORICAL_COLUMNS
+from .db import _check_table, _CATEGORICAL_COLUMNS, AGGREGATE
 
 
 __all__ = ['query', 'query_async', 'getdf']
@@ -16,12 +20,13 @@ __all__ = ['query', 'query_async', 'getdf']
 log = logging.getLogger(__name__)
 
 
-def query(query, **kwargs) -> ResultSet:
+def query(query: str, **kwargs) -> ResultSet:
     try:
         client = get_client()
     except InfluxDBException:
         log.exception('Failed to instantiate InfluxDB client:')
         raise
+    kwargs.setdefault('epoch', 'ms')
     try:
         log.debug('Executing query: %s', query)
         result = client.query(query, **kwargs)
@@ -32,16 +37,20 @@ def query(query, **kwargs) -> ResultSet:
         raise
 
 
-def query_async(queries, **kwargs) -> ResultSet:
+def query_async(queries: list, **kwargs) -> ResultSet:
+    if isinstance(queries, str):
+        queries = [queries]
     with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-        for future in as_completed(executor.submit(query, query_str, epoch='ms', **kwargs)
+        for future in as_completed(executor.submit(query, query_str, **kwargs)
                                    for query_str in queries):
             yield future.result()
 
 
-def _query_str(table, *, where='', resample='', limit=1000):
-    parts = ['SELECT {columns} FROM {table}'.format(table=str(table),
-                                                    columns=table._select())]
+def _query_str(table, *, freq, where='', resample='', limit=1000):
+    parts = ['SELECT {columns} FROM {table}_{freq}'.format(
+        columns=table._select_agg() if resample else '*',
+        table=str(table),
+        freq=freq)]
     if where:
         where = aslist(where, str)
         parts.append('WHERE ' + ' AND '.join(where))
@@ -58,13 +67,9 @@ def _query_str(table, *, where='', resample='', limit=1000):
     return query_str
 
 
-def _where_field_name(condition, _split=re.compile(r'\W').split):
-    return _split(condition, maxsplit=1)[0]
-
-
-def getdf(tables, *, nodeid='', where='', limit=1000,
+def getdf(tables, *, nodeid='', where='', limit=100000,
           start_time=None, end_time=None,
-          resample='30s',
+          freq=None, resample='',
           interpolate=False) -> pd.DataFrame:
 
     tables = list(map(_check_table, aslist(tables)))
@@ -81,62 +86,176 @@ def getdf(tables, *, nodeid='', where='', limit=1000,
                          for node in nodeid]
         where.extend('(' + ' OR '.join(nodedid_where) + ')')
 
-    from .queries import table_timerange
-    if end_time is None:
-        max_time = max(i[1] for i in map(table_timerange, tables) if i)
-        end_time = min(pd.Timestamp('now', tz='UTC'), max_time)
-    if start_time is None:
-        min_time = min(i[0] for i in map(table_timerange, tables) if i)
-        start_time = max(pd.Timestamp.fromordinal(end_time.toordinal() - 14, tz='UTC'),
-                         min_time)
     # Sanitize input date and time
-    start_time = pd.Timestamp(start_time, tz='UTC').isoformat()
-    end_time = pd.Timestamp(end_time, tz='UTC').isoformat()
+    start_time, end_time = _check_time(start_time, end_time, tables=tables)
+    where.append('time >= {!r}'.format(start_time.isoformat()))
+    where.append('time <= {!r}'.format(end_time.isoformat()))
 
-    where.append('time >= {!r}'.format(start_time))
-    where.append('time <= {!r}'.format(end_time))
+    # Determine correct level-of-detail table
+    freq = _check_freq(freq, tspan=end_time - start_time, nodeid=nodeid)
 
+    def _where_field_name(condition, _split=re.compile(r'\W').split):
+        return _split(condition, maxsplit=1)[0]
+
+    # Construct queries with their applicable "where" parameters
     queries = []
     for table in tables:
         table_columns = {'time'} | set(table._columns())
         _where = [cond for cond in where
                   if _where_field_name(cond) in table_columns]
-        queries.append(_query_str(table, where=_where,
-                                  resample=resample, limit=limit))
+        queries.append(_query_str(table, freq=freq, where=_where, limit=limit))
 
+    # Construct response data frames; One df per measurement per tag
     dfs = []
     for results in query_async(queries):
+        _dfs = []
         for (measurement, tags), rows in results.items():
             df = pd.DataFrame(list(rows))
-            df.fillna(np.nan, inplace=True)
-            df.index = pd.to_datetime(df.time, unit='ms')
-            df.drop(['time'], axis=1, inplace=True)
+
             for tag, value in tags.items():
                 df[tag] = value
-            df = _check_table(measurement).__transform__(df)
-            df.columns = ['{}_{}'.format(measurement, column)
-                          for column in df.columns]
-            dfs.append(df)
 
-    df = pd.concat(dfs)
+            df = _check_table(measurement.split('_')[0]).__transform__(df)
+            _dfs.append(df)
+        df = pd.concat(_dfs, ignore_index=True)
+        dfs.append(df)
+        del _dfs
+
+    if not dfs:
+        return pd.DataFrame()
+
+    # Join all tables on intersecting columns, namely 'time', 'NodeId', 'IccId', ...
+    df = reduce(partial(pd.merge, how='outer', copy=False), dfs)
     del dfs
-    df.sort_index(inplace=True)
 
     # Transform known categorical columns into Categoricals
     for col in df:
-        if col.endswith(_CATEGORICAL_COLUMNS):
+        if col in _CATEGORICAL_COLUMNS:
             df[col] = df[col].astype('category')
+            # Strip trailing '.0' in categoricals constructed from floats (ints upcasted via NaNs)
+            categories = df[col].cat.categories
+            if is_numeric_dtype(categories):
+                df[col].cat.categories = categories.astype(int).astype(str)
+        else:
+            # Avoid None values resulting in object dtype
+            df[col].fillna(np.nan, inplace=True)
+
+    # Index by time
+    df.time = pd.to_datetime(df.time, unit='ms')
+    df.set_index('time', inplace=True)
+    df.sort_index(inplace=True)
+
+    if resample and not df.empty:
+        df = _resample(df, resample)
 
     if interpolate:
-        if interpolate is True:
-            interpolate = 'linear'
-        if interpolate == 'ffill':
-            df.ffill(inplace=True)
-        elif interpolate == 'bfill':
-            df.bfill(inplace=True)
-        else:
-            df.interpolate(method=interpolate, inplace=True)
+        df = _interpolate(df, interpolate)
 
-    df.dropna(inplace=True)
     return df
 
+
+def _get_grouped(df, by):
+    by = (df.columns & by).tolist()
+    return df.groupby(by, sort=False) if by else df
+
+
+def _resample(df, rule):
+    assert df.index.is_all_dates
+    # Group by categorical values and resample each group
+    by = df.columns & _CATEGORICAL_COLUMNS
+    resampled = _get_grouped(df, by).resample(rule)
+    have_numeric_cols = len(by) != df.columns.size
+
+    if have_numeric_cols:
+        df = resampled.agg({col: AGGREGATE[col]
+                            for col in df
+                            if col in AGGREGATE
+                            and col not in _CATEGORICAL_COLUMNS})
+    else:
+        # Size to run the aggregation pipeline, but then discard counts
+        # right away, retaining only the resampled-grouped index
+        df = resampled.size().to_frame()[[]]  # No columns
+
+    # Groupby puts group keys as index; revert this to timestamp-only index
+    df.reset_index(inplace=True)
+    df.set_index('time', inplace=True)
+    df.sort_index(inplace=True)  # Temporal index scrambed b/c all other index levels
+    return df
+
+
+def _interpolate(df, method):
+    if method is True:
+        method = 'linear'
+
+    # First remove time from index, see:
+    # https://github.com/pandas-dev/pandas/issues/16646#issuecomment-326542649
+    df.reset_index(inplace=True)
+
+    if method == 'index':
+        log.warning("Interpolation by temporal index currently not supported. "
+                    "Interpolating by 'linear'.")
+
+    # Group only by NodeId and/or Iccid for interpolation
+    grouped = _get_grouped(df, ['NodeId', 'Iccid'])
+
+    def _interpolator(series):
+        if method == 'ffill':
+            return series.ffill()
+        elif method == 'bfill':
+            return series.bfill()
+        if is_numeric_dtype(series):
+            return series.interpolate(method=method)
+        return series.ffill()
+
+    # Apply the interpolation to each series within a group
+    df = grouped.apply(lambda group: group.apply(_interpolator))
+
+    # Restore temporal index
+    df.set_index('time', inplace=True)
+    df.sort_index(inplace=True)
+    return df
+
+
+def _check_time(start_time, end_time, tables=()):
+    from .queries import table_timerange
+    if end_time is None:
+        max_time = max((i[1] for i in map(table_timerange, tables) if i),
+                       default=pd.Timestamp(np.iinfo(int).max, tz='UTC'))
+        end_time = min(pd.Timestamp('now', tz='UTC'), max_time)
+    if start_time is None:
+        min_time = min((i[0] for i in map(table_timerange, tables) if i),
+                       default=pd.Timestamp(0, tz='UTC'))
+        start_time = max(pd.Timestamp.fromordinal(end_time.toordinal() - 14, tz='UTC'),
+                         min_time)
+    start_time = pd.Timestamp(start_time, tz='UTC')
+    end_time = pd.Timestamp(end_time, tz='UTC')
+    return start_time, end_time
+
+
+_ALLOWED_FREQS = ('10ms', '1s', '1m', '30m')
+
+
+def _check_freq(freq, tspan=None, nodeid=None):
+    if tspan is not None and tspan.total_seconds() < 0:
+        raise ValueError('Start time must be before end time')
+
+    ONE_HOUR = 3600
+    ONE_DAY = 24 * ONE_HOUR
+
+    if freq:
+        if freq not in _ALLOWED_FREQS:
+            raise ValueError('freq must be from {}'.format(_ALLOWED_FREQS))
+    else:
+        freq = _ALLOWED_FREQS[-1]
+        span_secs = tspan.total_seconds()
+
+        limits = (8 * ONE_HOUR,
+                  2 * ONE_DAY,
+                  32 * ONE_DAY) if nodeid else (ONE_HOUR / 3,
+                                                1 * ONE_HOUR,
+                                                20 * ONE_HOUR)
+        for i, max_secs in enumerate(limits):
+            if span_secs < max_secs:
+                freq = _ALLOWED_FREQS[i]
+                break
+    return freq
