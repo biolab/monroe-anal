@@ -16,6 +16,28 @@ __all__ = ['distinct_values', 'all_nodes', 'all_tables', 'nodes_per_table',
 def distinct_values(table, field,
                     nodeid='', where='', freq='10ms',
                     start_time=None, end_time=None):
+    """
+    Return set of unique `field` values in `table`.
+
+    Parameters
+    ----------
+    table : str
+        Table to query.
+    field : str
+        Table column to select the values of.
+    nodeid : str
+        Filter rows by NodeId.
+    where : str or list of str
+        Additional SQL WHERE conditions.
+    freq : str
+        The granularity table to query. See `freq` in `getdf()` docstring.
+    start_time : str or datetime or pandas.Timestamp
+    end_time : str or datetime or pandas.Timestamp
+
+    Returns
+    -------
+    set
+    """
     table = _check_table(table)
     where = aslist(where, str)
     freq = _check_freq(freq)
@@ -38,17 +60,35 @@ def distinct_values(table, field,
 
 @lru_cache(1)
 def all_nodes():
+    """
+    Returns
+    -------
+    list
+        List of nodes available in the database.
+    """
     nodes = sorted(set(chain.from_iterable(nodes_per_table().values())), key=int)
     return nodes
 
 
 @lru_cache(1)
 def all_tables():
+    """
+    Returns
+    -------
+    list
+        List of tables available in the database.
+    """
     return sorted(nodes_per_table().keys())
 
 
 @lru_cache(1)
 def nodes_per_table():
+    """
+    Returns
+    -------
+    dict
+        Sorted list of available nodes per each table.
+    """
     results = query('SHOW TAG VALUES WITH KEY = NodeId')
     nodes = {measurement.split('_')[0]: sorted(set(row['value'] for row in rows), key=int)
              for (measurement, _), rows in results.items()}
@@ -57,6 +97,19 @@ def nodes_per_table():
 
 @lru_cache()
 def tables_for_node(nodeid):
+    """
+    Return tables `nodeid` is found in.
+
+    Parameters
+    ----------
+    nodeid : str or int
+        The NodeId to find in tables.
+
+    Returns
+    -------
+    set
+        Tables `nodeid` appears in.
+    """
     nodeid = str(int(nodeid))
     return {measurement
             for measurement, nodes in nodes_per_table().items()
@@ -65,6 +118,23 @@ def tables_for_node(nodeid):
 
 @lru_cache()
 def table_timerange(table, freq='10ms', nodeid=''):
+    """
+    Return table's min and max timestamp.
+
+    Parameters
+    ----------
+    table : str
+        A table name from ``all_tables()``.
+    freq : str
+        Granularity to query. See `freq` in `getdf()` docstring.
+    nodeid : str or int
+        The NodeId to limit results for.
+
+    Returns
+    -------
+    tuple
+        2-tuple of pandas.Timestamp: (start time, end time).
+    """
     freq = _check_freq(freq)
     table = _check_table(table)
     where = ' WHERE NodeId = {!r}'.format(str(nodeid)) if nodeid else ''

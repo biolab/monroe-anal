@@ -21,6 +21,20 @@ log = logging.getLogger(__name__)
 
 
 def query(query: str, **kwargs) -> ResultSet:
+    """
+    Fetch results of a raw SQL query.
+
+    Parameters
+    ----------
+    query : str
+        An SQL query to fetch results for.
+    kwargs :
+        Passed to ``influxdb.client.InfluxDBClient``.
+
+    Returns
+    -------
+    influxdb.resultset.ResultSet
+    """
     try:
         client = get_client()
     except InfluxDBException:
@@ -38,6 +52,20 @@ def query(query: str, **kwargs) -> ResultSet:
 
 
 def query_async(queries: list, **kwargs) -> ResultSet:
+    """
+    Generator fetching results of SQL queries in an asynchronous manner.
+
+    Parameters
+    ----------
+    queries : list of str
+        An list of SQL queries to fetch results for.
+    kwargs :
+        Passed to ``influxdb.client.InfluxDBClient``.
+
+    Yields
+    ------
+    influxdb.resultset.ResultSet
+    """
     if isinstance(queries, str):
         queries = [queries]
     with ThreadPoolExecutor(max_workers=len(queries)) as executor:
@@ -71,7 +99,44 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
           start_time=None, end_time=None,
           freq=None, resample='',
           interpolate=False) -> pd.DataFrame:
+    """
+    Return MONROE data as Pandas DataFrame.
 
+    Parameters
+    ----------
+    tables : str or list of str
+        Table name(s) to query and merge. Tables can be from the list
+        as retuend by ``all_tables()``.
+    nodeid : int or str or list of int or str
+        A single node ID or a list thereof. If empty, results for all
+        available nodes are returned.
+    where : str or list of str
+        Additional SQL WHERE conditions.
+    limit : int
+        Hard-limit on the number of rows requested from the DB for each
+        NodeId.
+    start_time : str or datetime or pandas.Timestamp
+        Query results after start time. Default is set to 14 days before
+        `end_time` or the min timestamp of `tables`, whichever is later.
+    end_time : str or datetime or pandas.Timestamp
+        Query results before end time. Default is set to now or the
+        max timestamp of `tables`, whichever is sooner.
+    freq : str, from {'10ms', '1s', '1m', '30m'}
+        The level of detail to query. Higher precision results in MORE
+        data. By default, `freq` is set to a sensible (manageable) value
+        based on query time span.
+    resample : str
+        Resampling rule (such as '1h', '2h', '1d', ...) from
+        http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
+    interpolate : str or bool, default False
+        Interpolation method supported by ``pandas.DataFrame.interpolate``,
+        or ``True`` for `linear` interpolation of missing values.
+        Rows are grouped by NodeId,Iccid before interpolation.
+
+    Returns
+    -------
+    pandas.DataFrame
+    """
     tables = list(map(_check_table, aslist(tables)))
     if not tables:
         raise ValueError('Need a table name to fetch')
