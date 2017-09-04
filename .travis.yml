@@ -1,0 +1,17 @@
+sudo: false
+dist: trusty
+language: python
+python: '3.5'
+cache:
+    apt: true
+    pip: true
+    ccache: true
+
+before_install:
+    - set -e  # fail on any error
+
+install:
+    - pip install $TRAVIS_BUILD_DIR
+
+script:
+    - python $TRAVIS_BUILD_DIR/setup.py test

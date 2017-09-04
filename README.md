@@ -1,6 +1,8 @@
 MONROE Analysis
 ===============
 
+[![Build Status](https://travis-ci.org/biolab/monroe-anal.svg?branch=master)](https://travis-ci.org/biolab/monroe-anal)
+
 A Python 3 utility library for querying, analyzing, and visualizing
 [MONROE] data.
 
