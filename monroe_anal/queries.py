@@ -8,7 +8,7 @@ from .query_base import query, query_async, _check_freq
 from .util import aslist
 
 
-__all__ = ['distinct_values', 'all_nodes', 'all_tables', 'nodes_per_table',
+__all__ = ['distinct_values', 'all_nodes', 'all_tables', 'nodes_for_table',
            'tables_for_node', 'table_timerange']
 
 
@@ -66,7 +66,7 @@ def all_nodes():
     list
         List of nodes available in the database.
     """
-    nodes = sorted(set(chain.from_iterable(nodes_per_table().values())), key=int)
+    nodes = sorted(set(chain.from_iterable(nodes_for_table().values())), key=int)
     return nodes
 
 
@@ -78,11 +78,11 @@ def all_tables():
     list
         List of tables available in the database.
     """
-    return sorted(nodes_per_table().keys())
+    return sorted(nodes_for_table().keys())
 
 
 @lru_cache(1)
-def nodes_per_table():
+def nodes_for_table():
     """
     Returns
     -------
@@ -112,7 +112,7 @@ def tables_for_node(nodeid):
     """
     nodeid = str(int(nodeid))
     return {measurement
-            for measurement, nodes in nodes_per_table().items()
+            for measurement, nodes in nodes_for_table().items()
             if nodeid in nodes}
 
 

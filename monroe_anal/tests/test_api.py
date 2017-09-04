@@ -6,7 +6,7 @@ from influxdb.resultset import ResultSet
 from monroe_anal import getdf, query, query_async
 from monroe_anal import (all_nodes,
                          all_tables,
-                         nodes_per_table,
+                         nodes_for_table,
                          tables_for_node,
                          table_timerange)
 
@@ -153,7 +153,7 @@ class TestQueries(unittest.TestCase):
     def test_queries(self):
         self.assertEqual(all_nodes(), sorted(ALL_NODEIDS))
         self.assertEqual(all_tables(), sorted(ALL_TABLES))
-        self.assertEqual(nodes_per_table(), NODES_PER_TABLE)
+        self.assertEqual(nodes_for_table(), NODES_PER_TABLE)
         self.assertEqual(tables_for_node(109), {'modem', 'sensor', 'ping'})
         self.assertSequenceEqual(table_timerange('ping'), TIMERANGE)
 
