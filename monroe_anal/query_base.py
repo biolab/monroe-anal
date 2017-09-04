@@ -149,7 +149,7 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
         nodeid = aslist(nodeid, str)
         nodedid_where = ['NodeId = {!r}'.format(str(node))
                          for node in nodeid]
-        where.extend('(' + ' OR '.join(nodedid_where) + ')')
+        where.append('(' + ' OR '.join(nodedid_where) + ')')
 
     # Sanitize input date and time
     start_time, end_time = _check_time(start_time, end_time, tables=tables)
@@ -159,8 +159,8 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
     # Determine correct level-of-detail table
     freq = _check_freq(freq, tspan=end_time - start_time, nodeid=nodeid)
 
-    def _where_field_name(condition, _split=re.compile(r'\W').split):
-        return _split(condition, maxsplit=1)[0]
+    def _where_field_name(condition, _identifiers=re.compile(r'\w+').findall):
+        return _identifiers(condition)[0]
 
     # Construct queries with their applicable "where" parameters
     queries = []
@@ -269,7 +269,8 @@ def _interpolate(df, method):
         elif method == 'bfill':
             return series.bfill()
         if is_numeric_dtype(series):
-            return series.interpolate(method=method)
+            return series.interpolate(method=method,
+                                      limit_direction='both')
         return series.ffill()
 
     # Apply the interpolation to each series within a group

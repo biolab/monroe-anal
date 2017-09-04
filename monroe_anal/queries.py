@@ -14,7 +14,7 @@ __all__ = ['distinct_values', 'all_nodes', 'all_tables', 'nodes_for_table',
 
 @lru_cache()
 def distinct_values(table, field,
-                    nodeid='', where='', freq='10ms',
+                    nodeid='', where='', freq='1s',
                     start_time=None, end_time=None):
     """
     Return set of unique `field` values in `table`.
@@ -117,7 +117,7 @@ def tables_for_node(nodeid):
 
 
 @lru_cache()
-def table_timerange(table, freq='10ms', nodeid=''):
+def table_timerange(table, nodeid='', freq='10ms', ):
     """
     Return table's min and max timestamp.
 
@@ -125,10 +125,10 @@ def table_timerange(table, freq='10ms', nodeid=''):
     ----------
     table : str
         A table name from ``all_tables()``.
-    freq : str
-        Granularity to query. See `freq` in `getdf()` docstring.
     nodeid : str or int
         The NodeId to limit results for.
+    freq : str
+        Granularity to query. See `freq` in `getdf()` docstring.
 
     Returns
     -------
