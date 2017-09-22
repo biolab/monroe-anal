@@ -182,8 +182,10 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
 
             df = _check_table(measurement.split('_')[0]).__transform__(df)
             _dfs.append(df)
-        df = pd.concat(_dfs, ignore_index=True)
-        dfs.append(df)
+
+        if _dfs:
+            df = pd.concat(_dfs, ignore_index=True)
+            dfs.append(df)
         del _dfs
 
     if not dfs:
