@@ -10,6 +10,17 @@ command -v csvtool >/dev/null || {
     echo 'ERROR: sudo apt install csvtool'
     exit 1
 }
+[ "$INFLUXDB_ADMIN_PASSWORD" ] || {
+    echo 'ERROR: Create admin user on InfluxDB and provide password in INFLUXDB_ADMIN_PASSWORD env variable.'
+    exit 1
+}
+
+# Create users. If user/pass details match, the actions are idempotent
+echo "Creating users."
+influx -username admin -password "$INFLUXDB_ADMIN_PASSWORD" \
+    -execute "CREATE USER admin WITH PASSWORD '$INFLUXDB_ADMIN_PASSWORD' WITH ALL PRIVILEGES;
+              CREATE USER monroe WITH PASSWORD 'secure';
+              GRANT READ ON monroe TO monroe;"
 
 scripts="$(readlink -f "$(dirname "$0")")"
 recipes="$scripts/recipes"
@@ -31,11 +42,11 @@ for table in $tables; do
 
         echo "        $file" >&2
 
-        tar xJOf $file |
-            csvtool -u TAB namedcol $columns - |
+        tar xJOf "$file" |
+            csvtool -u TAB namedcol "$columns" - |
             tail -n +2 |
             sed -E 's/\b(None|null)\b//g' |
-            "$scripts/tsv_to_line_protocol.py" ${table}_staged $tags $fields
+            "$scripts/tsv_to_line_protocol.py" "${table}_10ms" "$tags" "$fields"
     done
 done |
     split -a 5 -d -l 100000 - "influxdb_lines_"
@@ -50,18 +61,21 @@ done |
 echo
 echo 'Importing data into database ...'
 
-N_JOBS=100
+N_JOBS=10
 
 # Print DB import errors after completion
-trap 'grep error notice && echo -e "\nSee ./notice for import stats & errors"' EXIT
+trap '[ -f notice ] && grep error notice && echo -e "\nSee ./notice for import stats & errors"' EXIT
 
 for file in ./influxdb_lines_*; do
-    influx -import -precision ms -path <(
-        echo '#DDL
+    [ ! -f "$file" ] && continue
+    echo "$file"
+    { echo "$file"
+      influx -import -precision ms -username admin -password "$INFLUXDB_ADMIN_PASSWORD" -path <(
+          echo '#DDL
 CREATE DATABASE monroe
 # DML
 # CONTEXT-DATABASE: monroe';
-        cat "$file"; rm "$file";) >> notice 2>&1 &
+          cat "$file";) >> notice 2>&1 && rm "$file" || true; } &
 
     if [ $(jobs -lr | wc -l) -ge $N_JOBS ]; then
         wait -n
@@ -72,7 +86,9 @@ wait
 
 
 _first_time() {
-    influx -precision rfc3339 -database monroe -format csv -execute "SELECT * FROM ${1}_staged ORDER BY time $2 LIMIT 1" |
+    influx -precision rfc3339 -database monroe \
+        -username admin -password "$INFLUXDB_ADMIN_PASSWORD" \
+        -format csv -execute "SELECT * FROM ${1}_10ms ORDER BY time $2 LIMIT 1" |
         csvtool namedcol time - |
         tail -n +2
 }
@@ -81,27 +97,20 @@ _first_time() {
 echo 'Making LOD tables ...'
 for table in $tables; do
     agg_columns="$(python3 -c "from monroe_anal.db import $table; print($table._select_agg())")"
-    start_time="$(_first_time $table ASC)"
-    end_time="$(_first_time $table DESC)"
-    echo "    $table"
-    for time_bin in '10ms' '1s' '1m' '30m'; do
-        if [ "$time_bin" = '10ms' ]; then
-            groupby='*'  # Just group by tags (i.e. copy)
-        else
-            groupby="time($time_bin),*"
-        fi
+    start_time="$(_first_time "$table" ASC)"
+    end_time="$(_first_time "$table" DESC)"
+    for time_bin in '1s' '1m' '30m'; do
         echo "        $time_bin  $(
-            influx -database monroe -format csv \
-            -execute "SELECT $agg_columns \
-                      INTO ${table}_${time_bin} \
-                      FROM ${table}_staged \
-                      WHERE time >= '$start_time' \
-                      AND time <= '$end_time' \
-                      GROUP BY $groupby" | csvtool namedcol written - | tail -n +2)" &
+            influx -database monroe -username admin -password "$INFLUXDB_ADMIN_PASSWORD" -format csv \
+                -execute "SELECT $agg_columns \
+                          INTO ${table}_${time_bin} \
+                          FROM ${table}_10ms \
+                          WHERE time >= '$start_time' \
+                          AND time <= '$end_time' \
+                          GROUP BY time($time_bin),*" |
+            csvtool namedcol written - | tail -n +2)"
     done
-    wait
-    # Drop staging table
-    influx -database monroe -execute "DROP MEASUREMENT ${table}_staged"
 done
 
 wait
+echo "All done."
