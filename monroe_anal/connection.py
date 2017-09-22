@@ -8,8 +8,8 @@ InfluxDBException = (InfluxDBClientError,
 
 def set_connection_params(host: str='localhost',
                           port: int=8086,
-                          username: str='root',
-                          password: str='root',
+                          username: str='monroe',
+                          password: str='secure',
                           database: str='monroe',
                           **kwargs):
     """Set default parameters passed to influxdb.DataFrameClient"""
