@@ -1,2 +1,2 @@
-nodeid,iccid,cid,devicemode,devicestate,frequency,imsimccmnc,operator,ipaddress,ecio,rsrq,rssi,timestamp
-NodeId,Iccid CID,DeviceMode,DeviceState,Frequency,MCC_MNC,Operator,IP_Address,ECIO,RSRQ,RSSI
+nodeid,iccid,internalinterface,cid,devicemode,devicestate,frequency,imsimccmnc,operator,ipaddress,ecio,rsrq,rssi,timestamp
+NodeId,Iccid Interface,CID,DeviceMode,DeviceState,Frequency,MCC_MNC,Operator,IP_Address,ECIO,RSRQ,RSSI

@@ -71,7 +71,7 @@ class event(_Table):
 
 class modem(_Table):
     NodeId = Iccid = _GROUP_BY
-    CID = DeviceMode = DeviceState = Frequency = MCC_MNC = Operator = IP_Address = 'mode'
+    Interface = CID = DeviceMode = DeviceState = Frequency = MCC_MNC = Operator = IP_Address = 'mode'
     ECIO = RSRQ = RSSI = 'mean'
     _default_field = 'DeviceMode'
 
