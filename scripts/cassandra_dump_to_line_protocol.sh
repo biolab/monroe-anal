@@ -37,7 +37,8 @@ for table in $tables; do
 
     echo "    $table" >&2
 
-    for file in *"$table"*.csv.txz; do
+    # For each file of "table" type, in date-ascending order
+    for file in $(ls -v *"$table"*.csv.txz); do
         [ ! -f "$file" ] && continue
 
         echo "        $file" >&2
@@ -45,9 +46,9 @@ for table in $tables; do
         tar xJOf "$file" |
             csvtool -u TAB namedcol "$columns" - |
             tail -n +2 |
-            sed -E 's/\b(None|null)\b//g' |
-            "$scripts/tsv_to_line_protocol.py" "${table}_10ms" "$tags" "$fields"
-    done
+            sed -E 's/\b(None|null)\b//g'
+    done |
+        "$scripts/tsv_to_line_protocol.py" "${table}_10ms" "$tags" "$fields"
 done |
     split -a 5 -d -l 100000 - "influxdb_lines_"
 
