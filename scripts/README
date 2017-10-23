@@ -10,10 +10,9 @@ Updating DB workflow
 
 Recipes format
 --------------
-* three lines:
+* two lines:
   - input (CSV dump) columns to select in the desired order
-  - InfluxDB tags
-  - InfluxDB fields
+  - InfluxDB tags <" "> InfluxDB fields
+* See examples.
 * timestamp must be the last field on the first line
-* second + third line (concatenated) should match the first line's
-  fields (sans timestamp)
+* second line should match the first line's fields (sans timestamp)
