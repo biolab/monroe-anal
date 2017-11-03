@@ -21,7 +21,6 @@ if __name__ == '__main__':
         package_data={
         },
         include_package_data=True,
-        entry_points={},
         setup_requires=[
             'setuptools_git >= 0.3',
         ],
@@ -30,6 +29,10 @@ if __name__ == '__main__':
             'pandas >= 0.19.0',
             'influxdb',
         ],
+        entry_points={
+            'orange3.addon': ('monroe = monroe_anal',),
+            'orange.widgets': ('MONROE = monroe_anal.orange_widgets',),
+        },
         classifiers=[
             'Framework :: IPython',
             'Framework :: Jupyter',
