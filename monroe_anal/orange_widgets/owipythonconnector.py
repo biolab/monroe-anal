@@ -59,12 +59,12 @@ def _table_from_frame(df):
             metas.append(StringVariable(name))
             M.append(s.values.astype(object))
 
-    MAX_FUCKING_LENGTH = max(len(X[0]) if X else 0,
+    MAX_LENGTH = max(len(X[0]) if X else 0,
                              len(M[0]) if M else 0)
-    THIS_IS_IDIOTIC_I_SHOULD_KILL_MYSELF = 0
+    ZERO_CONSTANT = 0
     return Table.from_numpy(Domain(attrs, None, metas),
-                            np.column_stack(X) if X else np.empty((MAX_FUCKING_LENGTH,
-                                                                   THIS_IS_IDIOTIC_I_SHOULD_KILL_MYSELF)),
+                            np.column_stack(X) if X else np.empty((MAX_LENGTH,
+                                                                   ZERO_CONSTANT)),
                             None, np.column_stack(M) if M else None)
 
 
