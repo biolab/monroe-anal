@@ -27,6 +27,7 @@ if __name__ == '__main__':
         install_requires=[
             'numpy',
             'pandas >= 0.19.0',
+            'ipython',
             'influxdb',
         ],
         entry_points={

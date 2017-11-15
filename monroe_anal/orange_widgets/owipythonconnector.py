@@ -6,6 +6,7 @@ import pandas as pd
 
 from AnyQt.QtWidgets import QApplication
 from AnyQt.QtCore import Qt, QFileSystemWatcher
+
 from pandas.api.types import is_categorical_dtype, is_object_dtype, is_datetime64_any_dtype, is_numeric_dtype
 
 from Orange.data import (
@@ -60,11 +61,9 @@ def _table_from_frame(df):
             M.append(s.values.astype(object))
 
     MAX_LENGTH = max(len(X[0]) if X else 0,
-                             len(M[0]) if M else 0)
-    ZERO_CONSTANT = 0
+                     len(M[0]) if M else 0)
     return Table.from_numpy(Domain(attrs, None, metas),
-                            np.column_stack(X) if X else np.empty((MAX_LENGTH,
-                                                                   ZERO_CONSTANT)),
+                            np.column_stack(X) if X else np.empty((MAX_LENGTH, 0)),
                             None, np.column_stack(M) if M else None)
 
 
@@ -125,6 +124,7 @@ class OWIPythonConnector(widget.OWWidget):
 
         gui.auto_commit(self.buttonsArea, self, 'auto_commit', label='Send')
 
+        os.makedirs(STORE.root, exist_ok=True)  # For below assertion to work
         self.watcher = QFileSystemWatcher([STORE.root] + self._glob_files(), parent=self,
                                           directoryChanged=self.on_dir_changed,
                                           fileChanged=self.on_file_changed)
