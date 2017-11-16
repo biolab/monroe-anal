@@ -1,6 +1,7 @@
 import re
 import logging
 from functools import reduce, partial
+from concurrent import futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
@@ -8,8 +9,9 @@ import numpy as np
 from pandas.api.types import is_numeric_dtype
 
 from influxdb.resultset import ResultSet
+from requests.exceptions import RequestException
 
-from .connection import get_client, InfluxDBException
+from .connection import get_client, InfluxDBException, _timeout
 from .util import aslist
 from .db import _check_table, _CATEGORICAL_COLUMNS, AGGREGATE
 
@@ -46,8 +48,11 @@ def query(query: str, **kwargs) -> ResultSet:
         result = client.query(query, **kwargs)
         log.debug('Result set size: %d, %d rows', len(result), len(tuple(result.get_points())))
         return result
+    except RequestException:
+        log.error('Failed to execute query in %d seconds: %s', _timeout, query)
+        raise
     except InfluxDBException:
-        log.exception('Failed to process query: %s', query)
+        log.error('Failed to execute query: %s', query)
         raise
 
 
@@ -69,9 +74,15 @@ def query_async(queries: list, **kwargs) -> ResultSet:
     if isinstance(queries, str):
         queries = [queries]
     with ThreadPoolExecutor(max_workers=len(queries)) as executor:
-        for future in as_completed(executor.submit(query, query_str, **kwargs)
-                                   for query_str in queries):
-            yield future.result()
+        try:
+            for future in as_completed((executor.submit(query, query_str, **kwargs)
+                                        for query_str in queries),
+                                       # +1 to allow InfluxDBClient (requests) to fail first
+                                       timeout=_timeout + 1):
+                yield future.result()
+        except (futures.TimeoutError, RequestException):
+            log.error("Failed to execute all queries in %d seconds: %s", _timeout, queries)
+            raise
 
 
 def _query_str(table, *, freq, where='', resample='', limit=1000):

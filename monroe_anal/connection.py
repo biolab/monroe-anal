@@ -6,19 +6,21 @@ InfluxDBException = (InfluxDBClientError,
                      InfluxDBServerError)
 
 
-def set_connection_params(host: str='localhost',
-                          port: int=8086,
-                          username: str='monroe',
-                          password: str='secure',
-                          database: str='monroe',
+def set_connection_params(host: str = 'localhost',
+                          port: int = 8086,
+                          username: str = 'monroe',
+                          password: str = 'secure',
+                          database: str = 'monroe',
+                          timeout: int = 60,
                           **kwargs):
     """Set default parameters passed to influxdb.DataFrameClient"""
-    global _host, _port, _username, _password, _database, _kwargs
+    global _host, _port, _username, _password, _database, _timeout, _kwargs
     _host = host or 'localhost'
     _port = port
     _username = username
     _password = password
     _database = database
+    _timeout = max(1, int(timeout))
     _kwargs = kwargs
     # Reset client
     global _client
@@ -34,10 +36,11 @@ def get_client() -> InfluxDBClient:
                                  username=_username,
                                  password=_password,
                                  database=_database,
+                                 timeout=_timeout,
                                  **_kwargs)
     return _client
 
 
 # Set default variables
-_client = _host = _port = _username = _password = _database = _kwargs = None
+_client = _host = _port = _username = _password = _database = _timeout = _kwargs = None
 set_connection_params()
