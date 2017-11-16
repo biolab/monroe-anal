@@ -12,8 +12,9 @@ from influxdb.resultset import ResultSet
 from requests.exceptions import RequestException
 
 from .connection import get_client, InfluxDBException, _timeout
-from .util import aslist
+from .util import aslist, asstr
 from .db import _check_table, _CATEGORICAL_COLUMNS, AGGREGATE
+from . import db
 
 
 __all__ = ['query', 'query_async', 'getdf']
@@ -85,9 +86,9 @@ def query_async(queries: list, **kwargs) -> ResultSet:
             raise
 
 
-def _query_str(table, *, freq, where='', resample='', limit=1000):
+def _query_str(table, *, freq, columns='', where='', resample='', limit=1000):
     parts = ['SELECT {columns} FROM {table}_{freq}'.format(
-        columns=table._select_agg() if resample else '*',
+        columns=asstr(columns) or (table._select_agg() if resample else '*'),
         table=str(table),
         freq=freq)]
     if where:
@@ -173,31 +174,27 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
     def _where_field_name(condition, _identifiers=re.compile(r'\w+').findall):
         return _identifiers(condition)[0]
 
-    # Construct queries with their applicable "where" parameters
-    queries = []
-    for table in tables:
+    def _query_for_table(table, where, freq, limit, columns=''):
         table_columns = {'time'} | set(table._columns())
         _where = [cond for cond in where
                   if _where_field_name(cond) in table_columns]
-        queries.append(_query_str(table, freq=freq, where=_where, limit=limit))
+        return _query_str(table, columns=columns, freq=freq, where=_where, limit=limit)
+
+    # Construct queries with their applicable "where" parameters
+    queries = [_query_for_table(table, where, freq, limit)
+               for table in tables]
+
+    # If output will contain column Iccid, ensure it also contains modem.Interface
+    if db.modem not in tables and any('Iccid' in table for table in tables):
+        queries.append(_query_for_table(db.modem, where, freq, limit,
+                                        columns=['Interface', 'Iccid']))
 
     # Construct response data frames; One df per measurement per tag
     dfs = []
     for results in query_async(queries):
-        _dfs = []
-        for (measurement, tags), rows in results.items():
-            df = pd.DataFrame(list(rows))
-
-            for tag, value in tags.items():
-                df[tag] = value
-
-            df = _check_table(measurement.split('_')[0]).__transform__(df)
-            _dfs.append(df)
-
-        if _dfs:
-            df = pd.concat(_dfs, ignore_index=True)
+        df = _result_set_to_df(results)
+        if df is not None:
             dfs.append(df)
-        del _dfs
 
     if not dfs:
         return pd.DataFrame()
@@ -259,6 +256,21 @@ def _resample(df, rule):
     df.set_index('time', inplace=True)
     df.sort_index(inplace=True)  # Temporal index scrambed b/c all other index levels
     return df
+
+
+def _result_set_to_df(result_set):
+    dfs = []
+    for (measurement, tags), rows in result_set.items():
+        df = pd.DataFrame(list(rows))
+
+        for tag, value in tags.items():
+            df[tag] = value
+
+        df = _check_table(measurement.split('_')[0]).__transform__(df)
+        dfs.append(df)
+    if not dfs:
+        return None
+    return pd.concat(dfs, ignore_index=True)
 
 
 def _interpolate(df, method):

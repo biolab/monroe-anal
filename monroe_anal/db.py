@@ -40,6 +40,11 @@ class _Table(metaclass=_TableMeta):
     def _columns(self):
         return [col for col, _ in self]
 
+    def __contains__(self, column):
+        return (isinstance(column, str) and
+                not column.startswith('_') and
+                hasattr(self, column))
+
 
 class ping(_Table):
     NodeId = Iccid = _GROUP_BY

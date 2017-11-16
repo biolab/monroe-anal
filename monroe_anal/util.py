@@ -17,6 +17,12 @@ def aslist(sequence, dtype=None):
     raise TypeError('sequence must be str or list-like')
 
 
+def asstr(sequence):
+    if isinstance(sequence, str):
+        return sequence
+    return ','.join(sequence)
+
+
 def lower(sequence):
     return list(map(str.lower, sequence))
 
