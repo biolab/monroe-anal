@@ -13,7 +13,7 @@ __all__ = ['distinct_values', 'all_nodes', 'all_tables', 'nodes_for_table',
 
 
 @lru_cache()
-def distinct_values(table, field,
+def distinct_values(table, field, *,
                     nodeid='', where='', freq='1s',
                     start_time=None, end_time=None):
     """
@@ -53,7 +53,8 @@ def distinct_values(table, field,
         field=field,
         table=table,
         freq=freq,
-        where=' AND '.join(where)))
+        where=(' WHERE ' + ' AND '.join(where)) if where else '',
+    ))
     results = {row['distinct'] for row in results.get_points()}
     return results
 
@@ -117,7 +118,7 @@ def tables_for_node(nodeid):
 
 
 @lru_cache()
-def table_timerange(table, nodeid='', freq='10ms', ):
+def table_timerange(table, nodeid='', *, freq='10ms'):
     """
     Return table's min and max timestamp.
 
@@ -154,8 +155,8 @@ def table_timerange(table, nodeid='', freq='10ms', ):
                             for results in query_async(queries)
                             for _, rows in results.items()
                             for row in rows], unit='ms', utc=True)
-    assert not pd.isnull(times.min())
-    assert not pd.isnull(times.max())
+    assert not pd.isnull(times.min()) or times.size == 0
+    assert not pd.isnull(times.max()) or times.size == 0
     return times.min(), times.max()
 
 

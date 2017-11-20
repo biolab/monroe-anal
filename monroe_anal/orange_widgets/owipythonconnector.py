@@ -3,68 +3,19 @@ from glob import glob
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 
 from AnyQt.QtWidgets import QApplication
-from AnyQt.QtCore import Qt, QFileSystemWatcher
+from AnyQt.QtCore import QFileSystemWatcher
 
-from pandas.api.types import is_categorical_dtype, is_object_dtype, is_datetime64_any_dtype, is_numeric_dtype
-
-from Orange.data import (
-    Table, Domain, DiscreteVariable, StringVariable,
-    TimeVariable,
-    ContinuousVariable,
-)
+from Orange.data import Table
 from Orange.widgets import widget, settings, gui
 
 from monroe_anal.ipython_connector import IPythonStore
+from monroe_anal.orange_widgets.util import table_from_frame
 
 
 STORE = IPythonStore()
-
-
-def _table_from_frame(df):
-
-    def _is_discrete(s):
-        return (is_categorical_dtype(s) or
-                is_object_dtype(s) and s.nunique() < s.size ** .5)
-
-    def _is_datetime(s):
-        if is_datetime64_any_dtype(s):
-            return True
-        try:
-            if is_object_dtype(s):
-                pd.to_datetime(s, infer_datetime_format=True)
-                return True
-        except Exception:
-            pass
-        return False
-
-    attrs, metas = [], []
-    X, M = [], []
-
-    for name, s in df.items():
-        name = str(name)
-        if _is_discrete(s):
-            discrete = s.astype('category').cat
-            attrs.append(DiscreteVariable(name, discrete.categories.astype(str).tolist()))
-            X.append(discrete.codes.replace(-1, np.nan).values)
-        elif _is_datetime(s):
-            tvar = TimeVariable(name)
-            attrs.append(tvar)
-            s = pd.to_datetime(s, infer_datetime_format=True)
-            X.append(s.astype('str').map(tvar.parse).values)
-        elif is_numeric_dtype(s):
-            attrs.append(ContinuousVariable(name))
-            X.append(s.values)
-        else:
-            metas.append(StringVariable(name))
-            M.append(s.values.astype(object))
-
-    MAX_LENGTH = max(len(X[0]) if X else 0,
-                     len(M[0]) if M else 0)
-    return Table.from_numpy(Domain(attrs, None, metas),
-                            np.column_stack(X) if X else np.empty((MAX_LENGTH, 0)),
-                            None, np.column_stack(M) if M else None)
 
 
 def _table_from_numpy(x):
@@ -89,8 +40,8 @@ def _table_from_numpy(x):
 
 # Mapping of Jupyter types to callable conversions to Orange Table
 VALID_DATA_TYPES = {
-    pd.DataFrame: _table_from_frame,
-    pd.Series: lambda s: _table_from_frame(s.to_frame()),
+    pd.DataFrame: table_from_frame,
+    pd.Series: lambda s: table_from_frame(s.to_frame()),
     np.ndarray: _table_from_numpy,
 }
 

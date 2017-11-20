@@ -57,7 +57,7 @@ def query(query: str, **kwargs) -> ResultSet:
         raise
 
 
-def query_async(queries: list, **kwargs) -> ResultSet:
+def query_async(queries: list, callback=None, **kwargs) -> ResultSet:
     """
     Generator fetching results of SQL queries in an asynchronous manner.
 
@@ -65,6 +65,8 @@ def query_async(queries: list, **kwargs) -> ResultSet:
     ----------
     queries : list of str
         An list of SQL queries to fetch results for.
+    callback : callable
+        The function to call after each successfully executed query.
     kwargs :
         Passed to ``influxdb.client.InfluxDBClient``.
 
@@ -81,6 +83,10 @@ def query_async(queries: list, **kwargs) -> ResultSet:
                                        # +1 to allow InfluxDBClient (requests) to fail first
                                        timeout=_timeout + 1):
                 yield future.result()
+
+                if callback:
+                    callback()
+
         except (futures.TimeoutError, RequestException):
             log.error("Failed to execute all queries in %d seconds: %s", _timeout, queries)
             raise
@@ -110,7 +116,8 @@ def _query_str(table, *, freq, columns='', where='', resample='', limit=1000):
 def getdf(tables, *, nodeid='', where='', limit=100000,
           start_time=None, end_time=None,
           freq=None, resample='',
-          interpolate=False) -> pd.DataFrame:
+          interpolate=False,
+          callback=None) -> pd.DataFrame:
     """
     Return MONROE data as Pandas DataFrame.
 
@@ -144,6 +151,8 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
         Interpolation method supported by ``pandas.DataFrame.interpolate``,
         or ``True`` for `linear` interpolation of missing values.
         Rows are grouped by NodeId,Iccid before interpolation.
+    callback : callable
+        The function to call after each successfully executed query.
 
     Returns
     -------
@@ -191,7 +200,7 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
 
     # Construct response data frames; One df per measurement per tag
     dfs = []
-    for results in query_async(queries):
+    for results in query_async(queries, callback=callback):
         df = _result_set_to_df(results)
         if df is not None:
             dfs.append(df)
