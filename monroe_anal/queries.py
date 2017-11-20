@@ -157,3 +157,8 @@ def table_timerange(table, nodeid='', freq='10ms', ):
     assert not pd.isnull(times.min())
     assert not pd.isnull(times.max())
     return times.min(), times.max()
+
+
+def clear_caches():
+    for func in __all__:
+        globals()[func].cache_clear()

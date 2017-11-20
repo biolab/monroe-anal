@@ -26,6 +26,15 @@ def set_connection_params(host: str = 'localhost',
     global _client
     _client = None
 
+    # Connection params have changed, clear caches
+    try:
+        from .queries import clear_caches
+        clear_caches()
+    except ImportError:
+        # Fails on _this_ module import when set_connection_params
+        # is initially called
+        pass
+
 
 def get_client() -> InfluxDBClient:
     """ Returns influxdb.DataFrameClient instance """
