@@ -31,6 +31,11 @@ def table_from_frame(df):
     attrs, metas = [], []
     X, M = [], []
 
+    # If df index is not a simple RangeIndex (or similar), put it into data
+    if not (df.index.is_integer() and (df.index.is_monotonic_increasing or
+                                       df.index.is_monotonic_decreasing)):
+        df = df.reset_index()
+
     for name, s in df.items():
         name = str(name)
         if _is_discrete(s):
@@ -41,7 +46,7 @@ def table_from_frame(df):
             tvar = TimeVariable(name)
             attrs.append(tvar)
             s = pd.to_datetime(s, infer_datetime_format=True)
-            X.append(s.astype('str').map(tvar.parse).values)
+            X.append(s.astype('str').replace('NaT', np.nan).map(tvar.parse).values)
         elif is_numeric_dtype(s):
             attrs.append(ContinuousVariable(name))
             X.append(s.values)
