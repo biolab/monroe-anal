@@ -238,12 +238,12 @@ def getdf(tables, *, nodeid='', where='', limit=100000,
     return df
 
 
-def _get_grouped(df, by):
+def _get_grouped(df: pd.DataFrame, by):
     by = (df.columns & by).tolist()
     return df.groupby(by, sort=False) if by else df
 
 
-def _resample(df, rule):
+def _resample(df: pd.DataFrame, rule):
     assert df.index.is_all_dates
     # Group by categorical values and resample each group
     by = df.columns & _CATEGORICAL_COLUMNS
@@ -267,7 +267,7 @@ def _resample(df, rule):
     return df
 
 
-def _result_set_to_df(result_set):
+def _result_set_to_df(result_set: ResultSet):
     dfs = []
     for (measurement, tags), rows in result_set.items():
         df = pd.DataFrame(list(rows))
@@ -282,7 +282,7 @@ def _result_set_to_df(result_set):
     return pd.concat(dfs, ignore_index=True)
 
 
-def _interpolate(df, method):
+def _interpolate(df: pd.DataFrame, method):
     if method is True:
         method = 'linear'
 
@@ -309,6 +309,10 @@ def _interpolate(df, method):
 
     # Apply the interpolation to each series within a group
     df = grouped.apply(lambda group: group.apply(_interpolator))
+
+    # GroupBy-Interpolation can for undisclosed reasons (?) result in
+    # all-nan rows. We drop them for convenience.
+    df.dropna(how='all', inplace=True)
 
     # Restore temporal index
     df.set_index('time', inplace=True)
