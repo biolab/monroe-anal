@@ -43,6 +43,7 @@ VALID_DATA_TYPES = {
     pd.DataFrame: table_from_frame,
     pd.Series: lambda s: table_from_frame(s.to_frame()),
     np.ndarray: _table_from_numpy,
+    Table: lambda x: x,
 }
 
 
